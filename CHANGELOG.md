@@ -1,5 +1,20 @@
 # CHANGELOG — plex-health-monitor
 
+## [1.1.0] — 2026-02-28
+
+### Fixed
+- `fix_plex_storage.sh`: Also migrates `~/Library/Logs/Plex Media Server` → `/Volumes/6tb-R1/PlexLogs` (was 72 MB on NVMe)
+- `fix_plex_storage.sh`: Creates Butler DB backup dir on 500g-R1 (`/Volumes/500g-R1/Plex Data/Databases`)
+- `fix_plex_storage.sh`: Auto-installs and loads the watchdog launchd agent with real Plex token
+
+### Executed & Verified
+- Cache (7.7 GB) migrated from NVMe → 6tb-R1, symlink in place ✅
+- Logs (72 MB) migrated from NVMe → 6tb-R1, symlink in place ✅
+- Watchdog running as launchd agent (PID 47920) ✅
+- Plex API responding HTTP 200 ✅
+- Boot NVMe Plex footprint now: only 4 KB plist (Preferences) + app binary ✅
+- All `buildIndexFile: part has no video stream` errors confirmed benign (music analysis) ✅
+
 ## [1.0.0] — 2026-02-28
 
 ### Added
