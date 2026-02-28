@@ -1,5 +1,28 @@
 # CHANGELOG — plex-health-monitor
 
+## [1.2.0] — 2026-02-28
+
+### Added
+- `plex_health_monitor.py`: Prometheus `/metrics` endpoint on port 9101 — exports
+  `plex_up`, `plex_active_sessions`, `plex_stuck_sessions_total`, `plex_restart_count_total`,
+  `plex_nfs_mounts_ok`, `plex_health_monitor_up`
+- `promtail-config.yml`: Mac Pro Promtail agent shipping 4 Plex log streams to Loki:
+  `plex` (main server), `plex-scanner`, `plex-transcoder`, `plex-health-monitor`
+- `com.capes.promtail.plist`: launchd agent for Promtail on Mac Pro (port 9081)
+- Prometheus scrape job `plex-health-macpro` added to mbuntu observability stack
+
+### Fixed
+- `com.capes.plex-health-monitor.plist`: removed `StartInterval` (was killing daemon every 60s),
+  added `--metrics-port 9101` arg
+- `plex_health_monitor.py`: fixed `global METRICS_PORT` SyntaxError — now passes port as arg
+- `promtail-config.yml`: removed unsupported `label_keep` stage (not in this Promtail version)
+
+### Verified
+- `plex-health-macpro` Prometheus target: **up** ✅
+- Loki label/job values: `plex`, `plex-health-monitor`, `plex-scanner`, `plex-transcoder` ✅
+- Promtail on Mac Pro port 9081: **Ready** ✅
+- `plex_active_sessions=1` live during runningrock session ✅
+
 ## [1.1.0] — 2026-02-28
 
 ### Fixed

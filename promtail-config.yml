@@ -1,0 +1,124 @@
+# =============================================================================
+# promtail-config.yml — Mac Pro (mMacPro, 192.168.1.30)
+# Ships Plex logs + Mac Pro system logs → Loki on mbuntu (192.168.1.5:3100)
+# Managed by launchd: com.capes.promtail
+# =============================================================================
+
+server:
+  http_listen_port: 9081          # avoid conflict with mbuntu promtail on :9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /Volumes/6tb-R1/PlexLogs/promtail-positions.yaml
+
+clients:
+  - url: http://192.168.1.5:3100/loki/api/v1/push
+    tenant_id: capes
+    batchwait: 1s
+    batchsize: 1048576
+    timeout: 10s
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+
+scrape_configs:
+
+  # ---------------------------------------------------------------------------
+  # Plex Media Server main log
+  # ---------------------------------------------------------------------------
+  - job_name: plex
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: plex
+          host: macpro
+          service: plex-media-server
+          __path__: /Volumes/6tb-R1/PlexLogs/Plex Media Server.log
+    pipeline_stages:
+      # Parse Plex log format: "Feb 28, 2026 11:45:50.218 [0xTHREAD] LEVEL - message"
+      - regex:
+          expression: '^(?P<ts>\w{3}\s+\d+,\s+\d{4}\s+[\d:.]+)\s+\[(?P<thread>[^\]]+)\]\s+(?P<level>\w+)\s+-\s+(?P<message>.*)$'
+      - labels:
+          level:
+          thread:
+      - timestamp:
+          source: ts
+          format: "Jan 2, 2006 15:04:05.000"
+      # Tag requests vs regular log lines
+      - match:
+          selector: '{job="plex"}'
+          stages:
+            - regex:
+                expression: '(?P<plex_event>Request|Completed|DEBUG|INFO|WARN|ERROR).*'
+            - labels:
+                plex_event:
+
+  # ---------------------------------------------------------------------------
+  # Plex Media Scanner logs (analysis, matching, credits, etc.)
+  # ---------------------------------------------------------------------------
+  - job_name: plex-scanner
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: plex-scanner
+          host: macpro
+          service: plex-scanner
+          __path__: /Volumes/6tb-R1/PlexLogs/Plex Media Scanner*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts>\w{3}\s+\d+,\s+\d{4}\s+[\d:.]+)\s+\[(?P<thread>[^\]]+)\]\s+(?P<level>\w+)\s+-\s+(?P<message>.*)$'
+      - labels:
+          level:
+
+  # ---------------------------------------------------------------------------
+  # Plex Transcoder Statistics
+  # ---------------------------------------------------------------------------
+  - job_name: plex-transcoder
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: plex-transcoder
+          host: macpro
+          service: plex-transcoder
+          __path__: /Volumes/6tb-R1/PlexLogs/Plex Transcoder Statistics.log
+
+  # ---------------------------------------------------------------------------
+  # Plex Health Monitor (our watchdog)
+  # ---------------------------------------------------------------------------
+  - job_name: plex-health-monitor
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: plex-health-monitor
+          host: macpro
+          service: plex-watchdog
+          __path__: /Volumes/6tb-R1/Plex Media Server/Logs/plex-health-monitor.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ts>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\[(?P<level>[A-Z]+)\]\s+(?P<message>.*)$'
+      - labels:
+          level:
+      - timestamp:
+          source: ts
+          format: "2006-01-02 15:04:05"
+
+  # ---------------------------------------------------------------------------
+  # Mac system log (relevant errors only — filtered to avoid noise)
+  # ---------------------------------------------------------------------------
+  - job_name: macpro-system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: macpro-system
+          host: macpro
+          __path__: /var/log/*.log
+    pipeline_stages:
+      - drop:
+          expression: ".*Bonjour.*|.*mDNS.*|.*configd.*"

@@ -12,6 +12,8 @@
         <string>/Users/mProAdmin/Claude Scripts and Venvs/plex-health-monitor/plex_health_monitor.py</string>
         <string>--interval</string>
         <string>60</string>
+        <string>--metrics-port</string>
+        <string>9101</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -26,16 +28,13 @@
     <key>KeepAlive</key>
     <true/>
 
-    <key>StartInterval</key>
-    <integer>60</integer>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
 
     <key>StandardOutPath</key>
     <string>/Volumes/6tb-R1/Plex Media Server/Logs/plex-health-monitor.log</string>
 
     <key>StandardErrorPath</key>
     <string>/Volumes/6tb-R1/Plex Media Server/Logs/plex-health-monitor-error.log</string>
-
-    <key>ThrottleInterval</key>
-    <integer>30</integer>
 </dict>
 </plist>

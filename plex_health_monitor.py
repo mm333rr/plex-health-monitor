@@ -29,9 +29,11 @@ import os
 import platform
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -57,6 +59,51 @@ MAX_BOOT_CACHE_GB = 1.0        # Alert if boot-volume Plex cache exceeds 1 GB
 RESTART_COOLDOWN_SECS = 300    # Min seconds between auto-restarts
 CHECK_INTERVAL_SECS = 60       # How often to poll (override with --interval)
 MAX_RESTART_ATTEMPTS = 3       # Give up after this many restarts per hour
+
+# Prometheus metrics HTTP port (scraped by Prometheus on mbuntu)
+METRICS_PORT = 9101
+
+# ── Prometheus metrics registry (simple thread-safe dict) ─────────────────────
+_metrics: Dict[str, str] = {}
+_metrics_lock = threading.Lock()
+
+def set_metric(name: str, value, labels: Dict[str, str] = None) -> None:
+    """Set a Prometheus metric value."""
+    if labels:
+        label_str = ",".join(f'{k}="{v}"' for k, v in labels.items())
+        key = f"{name}{{{label_str}}}"
+    else:
+        key = name
+    with _metrics_lock:
+        _metrics[key] = str(value)
+
+def clear_metric_prefix(prefix: str) -> None:
+    """Remove all metrics starting with prefix (for per-session cleanup)."""
+    with _metrics_lock:
+        for k in [k for k in _metrics if k.startswith(prefix)]:
+            del _metrics[k]
+
+class MetricsHandler(BaseHTTPRequestHandler):
+    """Minimal Prometheus /metrics HTTP handler."""
+    def do_GET(self):
+        if self.path != "/metrics":
+            self.send_response(404); self.end_headers(); return
+        with _metrics_lock:
+            lines = [f"{k} {v}" for k, v in _metrics.items()]
+        body = "\n".join(lines) + "\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; version=0.0.4")
+        self.end_headers()
+        self.wfile.write(body.encode())
+    def log_message(self, *args):
+        pass  # suppress access logs
+
+def start_metrics_server(port: int) -> None:
+    """Start Prometheus metrics HTTP server in a daemon thread."""
+    server = HTTPServer(("0.0.0.0", port), MetricsHandler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    return server
 
 # Log dir
 LOG_DIR = PLEX_DATA_DIR / "Logs"
@@ -186,11 +233,23 @@ def restart_plex(logger: logging.Logger, dry_run: bool) -> bool:
         return False
 
 # ── Main watchdog loop ────────────────────────────────────────────────────────
-def run_monitor(token: str, interval: int, dry_run: bool) -> None:
+def run_monitor(token: str, interval: int, dry_run: bool, metrics_port: int = METRICS_PORT) -> None:
     """Main monitoring loop."""
     logger = setup_logging(LOG_DIR)
-    logger.info("🟢 Plex Health Monitor starting (interval=%ds, dry_run=%s)",
-                interval, dry_run)
+    logger.info("🟢 Plex Health Monitor starting (interval=%ds, dry_run=%s, metrics_port=%d)",
+                interval, dry_run, metrics_port)
+
+    # Start Prometheus metrics server
+    start_metrics_server(metrics_port)
+    logger.info("📊 Prometheus metrics endpoint: http://0.0.0.0:%d/metrics", metrics_port)
+
+    # Initialise static metrics
+    set_metric("plex_health_monitor_up", 1, {"host": "macpro"})
+    set_metric("plex_up", 0, {"host": "macpro"})
+    set_metric("plex_active_sessions", 0, {"host": "macpro"})
+    set_metric("plex_stuck_sessions_total", 0, {"host": "macpro"})
+    set_metric("plex_restart_count_total", 0, {"host": "macpro"})
+    set_metric("plex_nfs_mounts_ok", 1, {"host": "macpro"})
 
     # Track session progress: {session_key: (viewOffset, last_change_time)}
     session_tracker: Dict[str, Tuple[int, float]] = {}
@@ -210,6 +269,7 @@ def run_monitor(token: str, interval: int, dry_run: bool) -> None:
         pid = plex_running()
         if not pid:
             logger.error("❌ Plex Media Server is NOT running!")
+            set_metric("plex_up", 0, {"host": "macpro"})
             notify("Plex Health Monitor", "Plex is down — restarting...")
             if not dry_run and restart_count_hour < MAX_RESTART_ATTEMPTS:
                 if restart_plex(logger, dry_run):
@@ -222,12 +282,16 @@ def run_monitor(token: str, interval: int, dry_run: bool) -> None:
             continue
         else:
             logger.debug("✅ Plex running (PID %d)", pid)
+            set_metric("plex_up", 1, {"host": "macpro"})
 
         # ── Check 2: NFS mounts ───────────────────────────────────────────────
         nfs_ok = check_nfs_mounts(logger)
         if not nfs_ok:
+            set_metric("plex_nfs_mounts_ok", 0, {"host": "macpro"})
             logger.warning("NFS issue detected — may cause playback hangs")
             notify("Plex Health Monitor", "NFS mount unresponsive. Check mbuntu.")
+        else:
+            set_metric("plex_nfs_mounts_ok", 1, {"host": "macpro"})
 
         # ── Check 3: Boot NVMe cache bleed ───────────────────────────────────
         check_boot_cache(logger)
@@ -235,6 +299,7 @@ def run_monitor(token: str, interval: int, dry_run: bool) -> None:
         # ── Check 4: Stuck sessions ───────────────────────────────────────────
         sessions = get_sessions(token)
         active_keys = set()
+        set_metric("plex_active_sessions", len(sessions), {"host": "macpro"})
 
         for s in sessions:
             key = s["key"]
@@ -259,6 +324,10 @@ def run_monitor(token: str, interval: int, dry_run: bool) -> None:
                             "⚠️  STUCK SESSION: %s playing '%s' for %.0fs with no progress",
                             s["user"], s["title"], stuck_secs
                         )
+                        # Increment stuck counter metric
+                        with _metrics_lock:
+                            prev = int(_metrics.get('plex_stuck_sessions_total{host="macpro"}', 0))
+                        set_metric("plex_stuck_sessions_total", prev + 1, {"host": "macpro"})
                         notify("Plex Playback Hung",
                                f"{s['user']} stuck on '{s['title']}' — restarting Plex")
                         if now - last_restart_time > RESTART_COOLDOWN_SECS:
@@ -266,6 +335,8 @@ def run_monitor(token: str, interval: int, dry_run: bool) -> None:
                                 if restart_plex(logger, dry_run):
                                     restart_count_hour += 1
                                     last_restart_time = now
+                                    set_metric("plex_restart_count_total",
+                                               restart_count_hour, {"host": "macpro"})
                         else:
                             logger.warning("Restart cooldown active — skipping")
             elif state == "paused":
@@ -293,6 +364,8 @@ def main() -> None:
                         help="Plex auth token (or set PLEX_TOKEN env var)")
     parser.add_argument("--interval", type=int, default=CHECK_INTERVAL_SECS,
                         help=f"Check interval in seconds (default: {CHECK_INTERVAL_SECS})")
+    parser.add_argument("--metrics-port", type=int, default=METRICS_PORT,
+                        help=f"Prometheus metrics port (default: {METRICS_PORT})")
     parser.add_argument("--dry-run", action="store_true",
                         help="Log actions but don't restart Plex")
     args = parser.parse_args()
@@ -307,7 +380,7 @@ def main() -> None:
             print("       Find your token in Plex Web > Account > XML API")
             sys.exit(1)
 
-    run_monitor(args.token, args.interval, args.dry_run)
+    run_monitor(args.token, args.interval, args.dry_run, args.metrics_port)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.capes.promtail</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/promtail</string>
+        <string>-config.file=/Users/mProAdmin/Claude Scripts and Venvs/plex-health-monitor/promtail-config.yml</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Volumes/6tb-R1/Plex Media Server/Logs/promtail.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Volumes/6tb-R1/Plex Media Server/Logs/promtail-error.log</string>
+</dict>
+</plist>
