@@ -1,0 +1,9 @@
+# .gitignore — plex-health-monitor
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+logs/
+*.log
+.DS_Store

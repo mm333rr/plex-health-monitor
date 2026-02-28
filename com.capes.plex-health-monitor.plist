@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.capes.plex-health-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/mProAdmin/Claude Scripts and Venvs/plex-health-monitor/plex_health_monitor.py</string>
+        <string>--interval</string>
+        <string>60</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PLEX_TOKEN</key>
+        <string>YOUR_PLEX_TOKEN_HERE</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Volumes/6tb-R1/Plex Media Server/Logs/plex-health-monitor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Volumes/6tb-R1/Plex Media Server/Logs/plex-health-monitor-error.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
