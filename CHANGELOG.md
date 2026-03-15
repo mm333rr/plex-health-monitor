@@ -1,5 +1,35 @@
 # CHANGELOG — plex-health-monitor
 
+## [2.0.0] — 2026-03-14
+
+### Added
+- `classify_media_type()`: classifies every session as `music`, `video`, or `other`
+  using Plex item type, client product name, and a growing runtime title cache
+- `plex_stream_info` gauge with labels: `user`, `media_type`, `platform`, `device`,
+  `decision`, `video_resolution` — enables all Client Breakdown bargauge panels
+- `plex_stream_bitrate_kbps` per user/media_type
+- `plex_session_type_total` cumulative counter split by `music` / `video` / `other`
+- `plex_hour_activity` gauge (1 if streaming in current hour) — powers usage heatmap
+- `plex_library_section` gauges refreshed every 10 min — powers Library table panel
+- `plex_direct_streams` and `plex_transcoding_streams` split counters
+- `get_library_sections()`: polls `/library/sections` for section metadata
+- `update_session_metrics()`: atomic clear-and-rewrite of per-session label sets
+- `inc_metric()`: safe incrementing counter helper (replaces read-modify-write)
+- New session log line now includes `[media_type | platform | decision]`
+- Grafana dashboard `plex.json` v2 (31 panels) deployed to mbuntu — replaces stub
+
+### Changed
+- Metrics server thread: suppress access logs, clean handler shutdown
+- `setup_logging()`: guard against duplicate handlers on reload
+- Session tracker cleanup: ended sessions log at INFO not DEBUG
+
+### Analysis basis
+- 744 Plex session events parsed across Feb 28–Mar 14 2026
+- Peak Plexamp usage: **12:00–18:00 daily**, peak hour **17:00**
+- Video sessions: rare, cluster at **23:00** (movies) and **10:00–11:00** (catch-up TV)
+- Quiet window for background jobs: **02:00–07:00** (99–100% idle)
+- Butler maintenance window reset to **02:00–05:00** to protect daytime streams
+
 ## [1.2.0] — 2026-02-28
 
 ### Added
