@@ -189,49 +189,58 @@ def get_sessions(token: str) -> List[Dict]:
         return []
     sessions = []
     for item in list(root):
-        player   = item.find("Player")
-        user_el  = item.find("User")
-        ts_el    = item.find("TranscodeSession")
-        media_el = item.find("Media")
+        try:
+            player   = item.find("Player")
+            user_el  = item.find("User")
+            ts_el    = item.find("TranscodeSession")
+            media_el = item.find("Media")
 
-        item_type   = item.get("type", "")
-        title       = item.get("grandparentTitle", item.get("title", "?"))
-        client_name = player.get("product", "") if player is not None else ""
-        platform    = player.get("platform", "unknown") if player is not None else "unknown"
-        device      = player.get("title", "unknown") if player is not None else "unknown"
-        state       = player.get("state", "?") if player is not None else "?"
-        username    = user_el.get("title", "?") if user_el is not None else "?"
-        view_offset = int(item.get("viewOffset", 0))
+            item_type   = item.get("type", "")
+            title       = item.get("grandparentTitle", item.get("title", "?"))
+            client_name = player.get("product", "") if player is not None else ""
+            platform    = player.get("platform", "unknown") if player is not None else "unknown"
+            device      = player.get("title", "unknown") if player is not None else "unknown"
+            state       = player.get("state", "?") if player is not None else "?"
+            username    = user_el.get("title", "?") if user_el is not None else "?"
+            view_offset = int(float(item.get("viewOffset", 0)))
 
-        # Transcode decision
-        if ts_el is not None:
-            decision    = ts_el.get("videoDecision", ts_el.get("audioDecision", "transcode"))
-            bitrate     = int(ts_el.get("speed", 0))
-            resolution  = ts_el.get("videoResolution", "unknown")
-        elif media_el is not None:
-            decision    = "direct"
-            bitrate     = int(media_el.get("bitrate", 0))
-            resolution  = media_el.get("videoResolution", "unknown")
-        else:
-            decision, bitrate, resolution = "direct", 0, "unknown"
+            # Transcode decision.
+            # Plex API may return float strings for speed/bitrate (e.g. "81.5") —
+            # always cast via float() first to avoid ValueError crashes.
+            if ts_el is not None:
+                decision    = ts_el.get("videoDecision", ts_el.get("audioDecision", "transcode"))
+                bitrate     = int(float(ts_el.get("speed", 0)))
+                resolution  = ts_el.get("videoResolution", "unknown")
+            elif media_el is not None:
+                decision    = "direct"
+                bitrate     = int(float(media_el.get("bitrate", 0)))
+                resolution  = media_el.get("videoResolution", "unknown")
+            else:
+                decision, bitrate, resolution = "direct", 0, "unknown"
 
-        media_type = classify_media_type(item_type, client_name, title)
+            media_type = classify_media_type(item_type, client_name, title)
 
-        sessions.append({
-            "key":        item.get("key", ""),
-            "title":      title,
-            "state":      state,
-            "user":       username,
-            "viewOffset": view_offset,
-            "type":       item_type,
-            "media_type": media_type,
-            "client":     client_name or "unknown",
-            "platform":   platform,
-            "device":     device,
-            "decision":   decision,
-            "bitrate":    bitrate,
-            "resolution": resolution,
-        })
+            sessions.append({
+                "key":        item.get("key", ""),
+                "title":      title,
+                "state":      state,
+                "user":       username,
+                "viewOffset": view_offset,
+                "type":       item_type,
+                "media_type": media_type,
+                "client":     client_name or "unknown",
+                "platform":   platform,
+                "device":     device,
+                "decision":   decision,
+                "bitrate":    bitrate,
+                "resolution": resolution,
+            })
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Skipping malformed session item (key=%s): %s",
+                item.get("key", "?"), exc
+            )
     return sessions
 
 def get_library_sections(token: str) -> List[Dict]:
